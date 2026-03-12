@@ -220,12 +220,14 @@
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
                     <div class="flex justify-center relative">
+                        <!-- แก้ไขบัค SVG ដោយเพิ่ม data-part เข้าไปเพื่อความชัวร์ในการทำ Query Selector -->
                         <svg viewBox="0 0 200 400" class="w-48 md:w-64 drop-shadow-lg">
-                            <circle cx="100" cy="40" r="30" class="body-part" onclick="selectPain('neck')" />
-                            <rect x="85" y="70" width="30" height="20" class="body-part" onclick="selectPain('neck')" />
-                            <path d="M 50 90 Q 100 80 150 90 L 160 110 L 40 110 Z" class="body-part" onclick="selectPain('shoulder')" />
-                            <rect x="60" y="110" width="80" height="120" rx="10" class="body-part" onclick="selectPain('back')" />
-                            <rect x="35" y="110" width="20" height="100" rx="10" class="body-part" onclick="selectPain('wrist')" /> <rect x="145" y="110" width="20" height="100" rx="10" class="body-part" onclick="selectPain('wrist')" />
+                            <circle cx="100" cy="40" r="30" class="body-part" data-part="neck" onclick="selectPain('neck')" />
+                            <rect x="85" y="70" width="30" height="20" class="body-part" data-part="neck" onclick="selectPain('neck')" />
+                            <path d="M 50 90 Q 100 80 150 90 L 160 110 L 40 110 Z" class="body-part" data-part="shoulder" onclick="selectPain('shoulder')" />
+                            <rect x="60" y="110" width="80" height="120" rx="10" class="body-part" data-part="back" onclick="selectPain('back')" />
+                            <rect x="35" y="110" width="20" height="100" rx="10" class="body-part" data-part="wrist" onclick="selectPain('wrist')" /> 
+                            <rect x="145" y="110" width="20" height="100" rx="10" class="body-part" data-part="wrist" onclick="selectPain('wrist')" />
                         </svg>
                         <div class="absolute top-0 right-0 bg-slate-800 text-white text-xs px-3 py-1 rounded-full"><i class="fas fa-hand-pointer mr-1"></i> กดที่ร่างกาย</div>
                     </div>
@@ -373,7 +375,10 @@
         // ==========================================
         const SUPABASE_URL = 'https://vhvpdxbqhvrkppmlipuw.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZodnBkeGJxaHZya3BwbWxpcHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMjU5NTUsImV4cCI6MjA4ODgwMTk1NX0.uPiPAy71qYJpCkq_z4PRHRTFzJ5NIxrePTPv2hVf76Q'; 
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        let supabaseClient = null;
+        try { if(window.supabase) supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); } catch(e) {}
+        
         const TABLE_NAME = 'personal_info'; 
 
         let currentUser = null;
@@ -393,9 +398,14 @@
         }
 
         document.addEventListener('DOMContentLoaded', async () => {
-            const { data: { session } } = await supabaseClient.auth.getSession();
-            if (!session) { window.location.href = 'login.html'; return; }
-            currentUser = session.user;
+            if(supabaseClient) {
+                const { data: { session } } = await supabaseClient.auth.getSession();
+                if (!session) { window.location.href = 'login.html'; return; }
+                currentUser = session.user;
+            } else {
+                currentUser = { id: 'demo', email: 'demo@example.com', user_metadata: { display_name: 'Demo User' } };
+            }
+
             let displayName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
             if(displayName.length > 15) displayName = displayName.substring(0, 12) + '...';
             
@@ -410,20 +420,25 @@
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshData(); });
         window.addEventListener('pageshow', (event) => { if (event.persisted) refreshData(); });
 
-        async function logout() { stopMonitor(); stopExercise(); await syncToSupabase(); await supabaseClient.auth.signOut(); window.location.href = 'login.html'; }
+        async function logout() { stopMonitor(); stopExercise(); await syncToSupabase(); if(supabaseClient) await supabaseClient.auth.signOut(); window.location.href = 'login.html'; }
 
-        function parseHHMMSSToSeconds(timeStr) { if (!timeStr) return 0; const parts = timeStr.split(':'); return (parseInt(parts[0]) * 3600) + (parseInt(parts[1]) * 60) + parseInt(parts[2]); }
+        function parseHHMMSSToSeconds(timeStr) { 
+            if (!timeStr) return 0; 
+            const parts = timeStr.split(':'); 
+            if(parts.length !== 3) return 0;
+            return (parseInt(parts[0]) || 0) * 3600 + (parseInt(parts[1]) || 0) * 60 + (parseInt(parts[2]) || 0); 
+        }
         function formatTimeToHHMMSS(totalSec) { const h = Math.floor(totalSec / 3600).toString().padStart(2, '0'); const m = Math.floor((totalSec % 3600) / 60).toString().padStart(2, '0'); const s = (totalSec % 60).toString().padStart(2, '0'); return `${h}:${m}:${s}`; }
 
         async function loadUserData() {
-            if(!currentUser) return;
+            if(!currentUser || !supabaseClient) return;
             try {
                 const { data, error } = await supabaseClient.from(TABLE_NAME).select('*').eq('user_id', currentUser.id).maybeSingle(); 
                 if (error) console.error("Supabase Load Error:", error.message);
                 if (data) {
                     globalScore = parseInt(data.score || 0); sessionSeconds = parseHHMMSSToSeconds(data.time);
                     const todayDate = new Date().toLocaleDateString();
-                    if (localStorage.getItem('lastActiveDate') === todayDate) sessionBadSeconds = parseInt(localStorage.getItem('sessionBadSeconds') || '0');
+                    if (localStorage.getItem('lastActiveDate') === todayDate) sessionBadSeconds = parseInt(localStorage.getItem('sessionBadSeconds')) || 0;
                     else sessionBadSeconds = 0;
                     localStorage.setItem('sessionSeconds', sessionSeconds.toString()); localStorage.setItem('sessionBadSeconds', sessionBadSeconds.toString());
                 } else { globalScore = 0; sessionSeconds = 0; }
@@ -431,7 +446,7 @@
         }
 
         async function syncToSupabase() {
-            if(!currentUser) return;
+            if(!currentUser || !supabaseClient) return;
             const timeString = formatTimeToHHMMSS(sessionSeconds);
             try {
                 const { data: existingData, error: selectError } = await supabaseClient.from(TABLE_NAME).select('id').eq('user_id', currentUser.id).maybeSingle();
@@ -490,8 +505,10 @@
         }
 
         function initCharts() {
-            weeklyChart = new Chart(document.getElementById('chart-weekly').getContext('2d'), { type: 'bar', data: { labels:[], datasets:[{ label: 'คะแนนสุขภาพ', data:[], backgroundColor: '#10b981', borderRadius: 8 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } } } } });
-            postureChart = new Chart(document.getElementById('chart-posture').getContext('2d'), { type: 'doughnut', data: { labels:['Good Posture', 'Bad Posture'], datasets:[{ data:[1, 0], backgroundColor:['#10b981', '#f43f5e'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false } } } });
+            const canvasWeekly = document.getElementById('chart-weekly');
+            const canvasPosture = document.getElementById('chart-posture');
+            if(canvasWeekly) weeklyChart = new Chart(canvasWeekly.getContext('2d'), { type: 'bar', data: { labels:[], datasets:[{ label: 'คะแนนสุขภาพ', data:[], backgroundColor: '#10b981', borderRadius: 8 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } } } } });
+            if(canvasPosture) postureChart = new Chart(canvasPosture.getContext('2d'), { type: 'doughnut', data: { labels:['Good Posture', 'Bad Posture'], datasets:[{ data:[1, 0], backgroundColor:['#10b981', '#f43f5e'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false } } } });
         }
 
         async function updateChartsData() {
@@ -618,8 +635,6 @@
                 if(!modelExercise) {
                     modelExercise = await tmPose.load(EXERCISE_MODEL_URL + "model.json", EXERCISE_MODEL_URL + "metadata.json");
                     maxPredExercise = modelExercise.getTotalClasses();
-                    
-                    // กำหนด List เป็น 11 ขั้นตอนตามที่จัดเตรียมไว้
                     exerciseList = RAMA_EXERCISES;
                 }
                 exerciseCtx = await setupWebcamAndCanvas('exercise-canvas');
@@ -690,7 +705,6 @@
             
             let targetProb = 0;
             for(let i=0; i<maxPredExercise; i++) { 
-                // ค้นหาแบบเทียบตัวอักษรพิมพ์เล็ก และพยายามลบช่องว่างเพื่อความยืดหยุ่น (ในกรณีที่ Teachable Machine ส่งมาไม่เว้นวรรค)
                 const predClass = prediction[i].className.toLowerCase().trim();
                 const target = exerciseList[curExIdx].targetClass.toLowerCase().trim();
                 if(predClass === target || predClass.replace(/\s+/g, '') === target.replace(/\s+/g, '')) {
@@ -754,11 +768,13 @@
             // 1. ล้างไฮไลต์จากอวัยวะที่เคยเลือกไว้ทั้งหมด
             document.querySelectorAll('.body-part').forEach(el => el.classList.remove('active'));
             
-            // 2. ไฮไลต์อวัยวะใหม่ที่ถูกคลิก (เปลี่ยนเป็นสีแดง)
-            document.querySelectorAll(`.body-part[onclick="selectPain('${part}')"]`).forEach(el => el.classList.add('active'));
+            // 2. ไฮไลต์อวัยวะใหม่ที่ถูกคลิกโดยใช้ data-part เพื่อความสเถียรของ QuerySelector
+            document.querySelectorAll(`.body-part[data-part="${part}"]`).forEach(el => el.classList.add('active'));
 
             // 3. ดึงข้อมูลที่ตรงกับจุดที่คลิก
             const data = painData[part];
+            if(!data) return;
+
             const box = document.getElementById('prescription-box');
             
             // 4. แสดงผลลงในกล่องวิเคราะห์ (Prescription Box)
@@ -791,7 +807,19 @@
                 </div>
             `;
         }
-    </script>
 
+        // ==========================================
+        // แกัพบัค: ผูกฟังก์ชันเข้ากับ Global Window ตรงๆ เพื่อให้ใช้งานใน HTML Attributes ได้ 100% ป้องกัน Scope Error
+        // ==========================================
+        window.selectPain = selectPain;
+        window.switchPage = switchPage;
+        window.initMonitor = initMonitor;
+        window.stopMonitor = stopMonitor;
+        window.initExercise = initExercise;
+        window.stopExercise = stopExercise;
+        window.skipExercise = skipExercise;
+        window.logout = logout;
+
+    </script>
 </body>
 </html>
