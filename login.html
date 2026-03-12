@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เข้าสู่ระบบ - Office Syndrome Guard AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- เรียกใช้ Supabase ผ่าน CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        body { font-family: 'Kanit', sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.5); }
+        .bg-gradient-animate { background: linear-gradient(-45deg, #e0f2fe, #f0fdf4, #fff7ed, #f3e8ff); background-size: 400% 400%; animation: gradient 15s ease infinite; }
+        @keyframes gradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    </style>
+</head>
+<body class="bg-gradient-animate h-screen flex flex-col overflow-hidden text-slate-700 items-center justify-center">
+
+    <div class="glass p-8 rounded-3xl shadow-xl w-full max-w-sm flex flex-col items-center">
+        <div class="w-16 h-16 bg-teal-500 rounded-2xl flex items-center justify-center text-white text-3xl shadow-lg mb-4">
+            <i class="fas fa-brain"></i>
+        </div>
+        <h1 class="text-2xl font-bold mb-1 text-slate-800">เข้าสู่ระบบ</h1>
+        <p class="text-slate-500 text-sm mb-6">Office Syndrome Guard AI</p>
+
+        <div id="auth-error" class="hidden w-full bg-rose-100 text-rose-600 text-sm px-4 py-2 rounded-lg mb-4 text-center font-medium"></div>
+
+        <form id="login-form" class="w-full flex flex-col gap-4" onsubmit="handleLogin(event)">
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">อีเมล</label>
+                <input type="email" id="email" required class="w-full bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">รหัสผ่าน</label>
+                <input type="password" id="password" required class="w-full bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition">
+            </div>
+            
+            <button type="submit" id="submit-btn" class="w-full bg-teal-600 text-white font-bold py-3 rounded-xl hover:bg-teal-700 transition shadow-md mt-2 flex items-center justify-center gap-2">
+                <span id="btn-text">เข้าสู่ระบบ</span>
+                <i id="loading-icon" class="fas fa-circle-notch fa-spin hidden"></i>
+            </button>
+        </form>
+
+        <div class="mt-6 text-sm text-slate-500">
+            ยังไม่มีบัญชีใช่ไหม? <a href="register.html" class="text-teal-600 font-bold hover:underline">สมัครสมาชิก</a>
+        </div>
+    </div>
+
+    <script>
+        // ใส่ ANON KEY ตรงนี้
+        const SUPABASE_URL = 'https://vhvpdxbqhvrkppmlipuw.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZodnBkeGJxaHZya3BwbWxpcHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMjU5NTUsImV4cCI6MjA4ODgwMTk1NX0.uPiPAy71qYJpCkq_z4PRHRTFzJ5NIxrePTPv2hVf76Q'; 
+        
+        // แก้ไขชื่อตัวแปรเป็น supabaseClient เพื่อไม่ให้ชนกับไลบรารีหลัก
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // เช็คว่าล็อกอินอยู่แล้วหรือเปล่า ถ้าใช่ให้เด้งไปหน้าแอปเลย
+        document.addEventListener('DOMContentLoaded', async () => {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (session) window.location.href = 'index.html';
+        });
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const btnText = document.getElementById('btn-text');
+            const loadingIcon = document.getElementById('loading-icon');
+            const errorBox = document.getElementById('auth-error');
+            
+            btnText.classList.add('hidden');
+            loadingIcon.classList.remove('hidden');
+            errorBox.classList.add('hidden');
+
+            try {
+                // เรียกใช้ supabaseClient แทน
+                const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+                if (error) throw error;
+                // สำเร็จแล้วพาไปหน้าหลัก
+                window.location.href = 'index.html';
+            } catch (err) {
+                let msg = err.message;
+                if(msg.includes('Invalid login credentials')) msg = "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
+                errorBox.innerText = msg;
+                errorBox.classList.remove('hidden');
+            } finally {
+                btnText.classList.remove('hidden');
+                loadingIcon.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Posture Coach - Office Syndrome Guard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- TensorFlow & Teachable Machine -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body { font-family: 'Kanit', sans-serif; background-color: #f8fafc; }
+        .glass-panel { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.6); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05); }
+        
+        /* Sidebar Navigation */
+        .sidebar-item { transition: all 0.2s; border-left: 3px solid transparent; }
+        .sidebar-item:hover { background-color: #f1f5f9; color: #0f766e; }
+        .sidebar-item.active { background-color: #f0fdf4; color: #0f766e; border-left-color: #10b981; font-weight: 600; }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Avatar / Skeleton glow effects */
+        .status-good { box-shadow: 0 0 20px rgba(16, 185, 129, 0.4); border-color: #10b981; }
+        .status-bad { box-shadow: 0 0 20px rgba(244, 63, 94, 0.4); border-color: #f43f5e; animation: pulse-red 2s infinite; }
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(244, 63, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); } }
+
+        /* Heatmap Body Part */
+        .body-part { cursor: pointer; transition: all 0.3s; fill: #cbd5e1; }
+        .body-part:hover { fill: #f43f5e; filter: drop-shadow(0 0 8px rgba(244,63,94,0.6)); }
+        .body-part.active { fill: #f43f5e; }
+    </style>
+</head>
+<body class="h-screen flex overflow-hidden text-slate-700">
+
+    <!-- Left Sidebar -->
+    <aside class="w-64 bg-white border-r border-slate-200 flex flex-col z-20 shadow-sm hidden md:flex">
+        <div class="h-16 flex items-center px-6 border-b border-slate-100">
+            <div class="w-8 h-8 bg-gradient-to-br from-teal-400 to-emerald-600 rounded-lg flex items-center justify-center text-white font-bold shadow-md mr-3">
+                <i class="fas fa-brain"></i>
+            </div>
+            <h1 class="font-bold text-lg text-slate-800 tracking-tight">AI Posture<span class="text-emerald-500">Coach</span></h1>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto py-4">
+            <div class="px-6 mb-2 text-xs font-bold text-slate-400 uppercase tracking-wider">เมนูหลัก</div>
+            <button onclick="switchPage('dashboard')" id="nav-dashboard" class="sidebar-item active w-full flex items-center px-6 py-3 text-sm text-slate-600">
+                <i class="fas fa-chart-pie w-6 text-center mr-2 text-lg"></i> ภาพรวมสุขภาพ
+            </button>
+            <button onclick="switchPage('monitor')" id="nav-monitor" class="sidebar-item w-full flex items-center px-6 py-3 text-sm text-slate-600">
+                <i class="fas fa-video w-6 text-center mr-2 text-lg"></i> AI ตรวจจับท่านั่ง <span class="ml-auto bg-rose-100 text-rose-600 text-[10px] px-2 py-0.5 rounded-full font-bold">Live</span>
+            </button>
+            <button onclick="switchPage('clinic')" id="nav-clinic" class="sidebar-item w-full flex items-center px-6 py-3 text-sm text-slate-600">
+                <i class="fas fa-user-md w-6 text-center mr-2 text-lg"></i> วิเคราะห์จุดปวด
+            </button>
+            <button onclick="switchPage('exercise')" id="nav-exercise" class="sidebar-item w-full flex items-center px-6 py-3 text-sm text-slate-600">
+                <i class="fas fa-dumbbell w-6 text-center mr-2 text-lg"></i> AI สอนออกกำลังกาย
+            </button>
+
+            <div class="px-6 mt-6 mb-2 text-xs font-bold text-slate-400 uppercase tracking-wider">โหมดออฟฟิศ</div>
+            <button onclick="switchPage('leaderboard')" id="nav-leaderboard" class="sidebar-item w-full flex items-center px-6 py-3 text-sm text-slate-600">
+                <i class="fas fa-trophy w-6 text-center mr-2 text-lg"></i> ตารางคะแนน (Team)
+            </button>
+        </div>
+
+        <div class="p-4 border-t border-slate-100">
+            <button onclick="logout()" class="w-full flex items-center justify-center gap-2 bg-slate-50 text-slate-600 hover:text-rose-600 hover:bg-rose-50 py-2 rounded-xl transition text-sm font-semibold border border-slate-200">
+                <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col h-screen relative bg-slate-50/50">
+        
+        <!-- Top Navbar -->
+        <header class="h-16 glass-panel flex items-center justify-between px-6 z-10 sticky top-0">
+            <div class="flex items-center md:hidden">
+                <h1 class="font-bold text-lg text-slate-800"><i class="fas fa-brain text-emerald-500 mr-2"></i>AI Posture Coach</h1>
+            </div>
+            
+            <div class="hidden md:flex items-center bg-white border border-slate-200 rounded-full px-4 py-1.5 shadow-sm">
+                <div class="flex items-center gap-2 border-r border-slate-200 pr-4 mr-4">
+                    <i class="fas fa-fire text-orange-500"></i>
+                    <div><div class="text-[10px] text-slate-400 font-bold uppercase -mb-1">Health Score</div><div id="global-score" class="font-bold text-slate-700 text-lg">0 <span class="text-sm font-normal">pts</span></div></div>
+                </div>
+                <div class="text-sm font-medium text-slate-600 flex items-center gap-2">
+                    <img src="https://ui-avatars.com/api/?name=User&background=0D8ABC&color=fff" class="w-8 h-8 rounded-full border border-slate-200" id="user-avatar-img">
+                    <span id="user-email-display">กำลังโหลด...</span>
+                </div>
+            </div>
+            
+            <button class="md:hidden text-slate-600 text-xl"><i class="fas fa-bars"></i></button>
+        </header>
+
+        <!-- Page Contents -->
+        <main class="flex-1 overflow-y-auto p-4 md:p-8 relative">
+            
+            <!-- ================= 1. DASHBOARD ================= -->
+            <div id="page-dashboard" class="page-section max-w-6xl mx-auto space-y-6">
+                <!-- ... (Dashboard เดิม) ... -->
+                <h2 class="text-2xl font-bold text-slate-800">ยินดีต้อนรับกลับมา, <span class="text-emerald-600" id="welcome-name">ผู้ใช้งาน</span> 👋</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4 relative overflow-hidden">
+                        <div class="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 text-2xl z-10"><i class="fas fa-clock"></i></div>
+                        <div class="z-10">
+                            <p class="text-sm text-slate-500 font-medium">เวลานั่งถูกท่า (วันนี้)</p>
+                            <h3 class="text-2xl font-bold text-slate-800" id="dash-timer">00:00:00</h3>
+                        </div>
+                        <i class="fas fa-chair absolute -right-4 -bottom-4 text-8xl text-emerald-50 opacity-50"></i>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4 relative overflow-hidden">
+                        <div class="w-14 h-14 bg-rose-100 rounded-2xl flex items-center justify-center text-rose-600 text-2xl z-10"><i class="fas fa-exclamation-triangle"></i></div>
+                        <div class="z-10">
+                            <p class="text-sm text-slate-500 font-medium">ความเสี่ยง (Office Syndrome)</p>
+                            <h3 class="text-2xl font-bold text-rose-600">ปานกลาง <span class="text-sm text-slate-500 font-normal">(ไหล่ห่อ)</span></h3>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-3xl shadow-md flex items-center gap-4 text-white relative overflow-hidden">
+                        <div class="w-14 h-14 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center text-white text-2xl z-10"><i class="fas fa-stopwatch"></i></div>
+                        <div class="z-10">
+                            <p class="text-sm text-slate-300 font-medium flex items-center gap-1"><i class="fas fa-link"></i> Smartwatch Sync</p>
+                            <h3 class="text-2xl font-bold">5,432 <span class="text-sm font-normal">ก้าว</span></h3>
+                            <p class="text-xs text-emerald-400 mt-1">ตรวจพบการลุกเดินเมื่อ 10 นาทีที่แล้ว</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-indigo-50 border border-indigo-100 p-6 rounded-3xl flex flex-col md:flex-row items-center gap-6">
+                    <div class="w-20 h-20 bg-indigo-500 rounded-full flex items-center justify-center text-white text-3xl shadow-lg shrink-0 animate-bounce"><i class="fas fa-robot"></i></div>
+                    <div class="flex-1 text-center md:text-left">
+                        <h3 class="font-bold text-lg text-indigo-900 mb-1">AI Coach แนะนำสำหรับคุณวันนี้</h3>
+                        <p class="text-indigo-700 text-sm">"จากสถิติเมื่อวาน คุณมีอาการคอยื่น (Forward Head) บ่อยครั้ง แนะนำให้ทำ <b>ท่ายืดกล้ามเนื้อคอ</b> เป็นเวลา 2 นาทีเพื่อรับ +20 คะแนนสุขภาพ"</p>
+                    </div>
+                    <button onclick="switchPage('exercise')" class="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 transition shadow-md whitespace-nowrap">เริ่มยืดเส้นเลย</button>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm"><h3 class="font-bold text-slate-700 mb-4">กราฟคะแนนสุขภาพ (รายสัปดาห์)</h3><div class="h-64"><canvas id="chart-weekly"></canvas></div></div>
+                    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm"><h3 class="font-bold text-slate-700 mb-4">สัดส่วนท่านั่ง</h3><div class="h-64 flex justify-center"><canvas id="chart-posture"></canvas></div></div>
+                </div>
+            </div>
+
+            <!-- ================= 2. MONITOR ================= -->
+            <div id="page-monitor" class="page-section hidden h-full flex flex-col lg:flex-row gap-6">
+                <!-- Camera System -->
+                <div class="flex-1 relative bg-slate-900 rounded-3xl overflow-hidden shadow-xl flex items-center justify-center border-4 border-slate-800 transition-colors duration-500" id="monitor-frame">
+                    
+                    <div id="monitor-placeholder" class="absolute inset-0 flex flex-col items-center justify-center z-20 bg-slate-800">
+                        <img src="https://cdn-icons-png.flaticon.com/512/3206/3206015.png" class="w-32 h-32 opacity-50 mb-4 filter invert">
+                        <p class="text-white font-bold text-xl">เปิดกล้องเพื่อวิเคราะห์ 3D Skeleton</p>
+                        <p class="text-slate-400 text-sm mt-2">AI จะสร้างโครงร่างทับบนตัวคุณเพื่อตรวจสอบท่าทาง</p>
+                    </div>
+
+                    <div class="relative w-full h-full flex items-center justify-center">
+                        <canvas id="monitor-canvas" class="max-w-full max-h-full object-contain hidden"></canvas>
+                    </div>
+                    
+                    <!-- Alert Box -->
+                    <div id="alertBox" class="hidden absolute top-8 bg-rose-500/90 backdrop-blur text-white px-6 py-4 rounded-2xl shadow-2xl animate-bounce font-bold z-30 flex flex-col items-center text-center border-2 border-rose-300">
+                        <div class="flex items-center gap-2 text-xl mb-1"><i class="fas fa-bell"></i> <span>ระวัง นั่งผิดท่า! (-3 คะแนน)</span></div>
+                        <p class="text-sm font-normal">คุณนั่งผิดท่าเกิน 15 วินาทีแล้ว ยืดตัวขึ้นเดี๋ยวนี้</p>
+                    </div>
+                </div>
+
+                <!-- Live Dashboard -->
+                <div class="w-full lg:w-80 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col">
+                    <div class="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
+                        <h3 class="font-bold text-slate-800 text-lg"><i class="fas fa-satellite-dish text-emerald-500 animate-pulse mr-2"></i>Live Status</h3>
+                        <div class="bg-emerald-100 px-3 py-1 rounded-full text-xs font-bold text-emerald-700" id="session-timer">00:00:00</div>
+                    </div>
+
+                    <div class="bg-slate-50 rounded-2xl p-4 mb-6 text-center border border-slate-100 relative overflow-hidden">
+                        <p class="text-xs text-slate-500 font-bold uppercase mb-1">Session Score</p>
+                        <div class="text-4xl font-black text-slate-800" id="live-score">0</div>
+                        <div id="score-indicator" class="absolute top-2 right-4 text-emerald-500 font-bold text-sm opacity-0 transition-opacity">+5</div>
+                    </div>
+
+                    <div id="label-container-monitor" class="space-y-4 flex-1"></div>
+                    
+                    <div class="mt-6 pt-4 border-t border-slate-100">
+                        <button onclick="initMonitor()" id="btnStartMonitor" class="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition shadow-lg flex justify-center items-center gap-2">
+                            <i class="fas fa-power-off"></i> เริ่มตรวจจับ (เปิดกล้อง)
+                        </button>
+                        <button onclick="stopMonitor()" id="btnStopMonitor" class="hidden w-full bg-slate-200 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-300 transition flex justify-center items-center gap-2">
+                            <i class="fas fa-stop"></i> หยุดพักกล้อง
+                        </button>
+                        <div id="loading-monitor" class="hidden text-center text-emerald-600 text-sm animate-pulse font-bold mt-3">
+                            <i class="fas fa-circle-notch fa-spin mr-1"></i> AI กำลังโหลดโมเดล...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================= 3. CLINIC ================= -->
+            <div id="page-clinic" class="page-section hidden max-w-5xl mx-auto">
+                <!-- ... (Clinic เดิม) ... -->
+                <div class="text-center mb-8">
+                    <h2 class="text-3xl font-bold text-slate-800">ระบบ Heatmap จุดปวด</h2>
+                    <p class="text-slate-500 mt-2">คลิกเลือกบริเวณที่คุณรู้สึกปวดหรือตึง เพื่อรับแผนการรักษาส่วนตัวจาก AI</p>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+                    <div class="flex justify-center relative">
+                        <svg viewBox="0 0 200 400" class="w-48 md:w-64 drop-shadow-lg">
+                            <circle cx="100" cy="40" r="30" class="body-part" onclick="selectPain('neck')" />
+                            <rect x="85" y="70" width="30" height="20" class="body-part" onclick="selectPain('neck')" />
+                            <path d="M 50 90 Q 100 80 150 90 L 160 110 L 40 110 Z" class="body-part" onclick="selectPain('shoulder')" />
+                            <rect x="60" y="110" width="80" height="120" rx="10" class="body-part" onclick="selectPain('back')" />
+                            <rect x="35" y="110" width="20" height="100" rx="10" class="body-part" onclick="selectPain('wrist')" /> <rect x="145" y="110" width="20" height="100" rx="10" class="body-part" onclick="selectPain('wrist')" />
+                        </svg>
+                        <div class="absolute top-0 right-0 bg-slate-800 text-white text-xs px-3 py-1 rounded-full"><i class="fas fa-hand-pointer mr-1"></i> กดที่ร่างกาย</div>
+                    </div>
+
+                    <div id="prescription-box" class="bg-slate-50 border border-slate-200 p-6 rounded-2xl h-full flex flex-col justify-center">
+                        <div class="text-slate-400 text-center text-lg"><i class="fas fa-arrow-left mr-2 md:hidden"></i> เลือกจุดปวดบนร่างกายเพื่อวิเคราะห์</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================= 4. EXERCISE (อัปเดตใหม่ 6 ท่ารามาธิบดี แบ่งซ้าย-ขวา) ================= -->
+            <div id="page-exercise" class="page-section hidden h-full flex flex-col lg:flex-row gap-6">
+                <!-- Exercise Camera -->
+                <div class="flex-1 relative bg-slate-900 rounded-3xl overflow-hidden shadow-xl flex items-center justify-center min-h-[400px]">
+                    <div id="exercise-placeholder" class="absolute inset-0 flex flex-col items-center justify-center z-20 bg-slate-800">
+                        <div class="bg-indigo-500 p-6 rounded-full shadow-lg mb-4 text-white"><i class="fas fa-running text-4xl"></i></div>
+                        <h2 class="text-2xl font-bold text-white mb-2">เข้าสู่โหมดกายภาพบำบัด</h2>
+                        <p class="text-indigo-200 mb-6 text-center max-w-sm px-4">6 ท่ายืด ออกกำลังกายป้องกันออฟฟิศซินโดรม<br>(อ้างอิง: รพ.รามาธิบดี ม.มหิดล)</p>
+                        <button onclick="initExercise()" id="btnStartExercise" class="bg-indigo-500 text-white px-8 py-3 rounded-full font-bold hover:bg-indigo-600 transition shadow-lg border-2 border-indigo-400">เริ่มทำกายภาพ</button>
+                    </div>
+                    <canvas id="exercise-canvas" class="max-w-full max-h-full object-contain hidden"></canvas>
+                    
+                    <div id="exercise-feedback" class="hidden absolute inset-0 bg-emerald-500/90 backdrop-blur-sm flex items-center justify-center z-30 transition-all flex-col">
+                        <div class="w-32 h-32 bg-white rounded-full flex items-center justify-center text-emerald-500 text-6xl shadow-2xl mb-4 animate-bounce"><i class="fas fa-check"></i></div>
+                        <h2 class="text-5xl font-black text-white drop-shadow-lg">เยี่ยมมาก!</h2>
+                        <p class="text-emerald-100 text-2xl font-bold mt-2">+20 คะแนน</p>
+                    </div>
+                </div>
+
+                <!-- Exercise HUD & Guide -->
+                <div class="w-full lg:w-[400px] flex flex-col gap-4 h-full">
+                    
+                    <!-- AI Status HUD -->
+                    <div class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col relative shrink-0">
+                        <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
+                            <span class="text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full"><i class="fas fa-tasks mr-1"></i> ภารกิจวันนี้</span>
+                            <span id="step-counter" class="text-slate-500 font-bold">0 / 11 ขั้นตอน</span>
+                        </div>
+
+                        <div class="flex flex-col items-center justify-center text-center">
+                            <img src="https://cdn-icons-png.flaticon.com/512/3048/3048398.png" id="pose-icon-img" class="w-16 h-16 mb-3 opacity-80 transition-all">
+                            <h2 id="pose-name" class="text-xl font-black text-slate-800 mb-2 transition-all">รอคำสั่ง...</h2>
+                            <p id="pose-desc" class="text-slate-600 text-sm px-4 bg-slate-50 py-3 rounded-xl border border-slate-100 min-h-[80px] flex items-center justify-center w-full transition-all">
+                                กดปุ่มเริ่มทำกายภาพเพื่อเปิดกล้อง
+                            </p>
+                        </div>
+
+                        <div class="mt-4 bg-slate-800 p-4 rounded-2xl text-white">
+                            <div class="flex justify-between text-sm font-bold mb-2">
+                                <span class="text-slate-300">ความแม่นยำ AI</span>
+                                <span id="hold-percent" class="text-emerald-400">0%</span>
+                            </div>
+                            <div class="h-4 bg-slate-700 rounded-full overflow-hidden relative shadow-inner">
+                                <div id="hold-bar" class="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 transition-all duration-200" style="width: 0%"></div>
+                                <div class="absolute top-0 bottom-0 w-1 bg-white/80 left-[85%] z-10 shadow-[0_0_5px_white]"></div> 
+                            </div>
+                            
+                            <div class="flex gap-2 mt-4">
+                                <button onclick="skipExercise()" class="flex-1 bg-slate-700 text-slate-300 py-2.5 rounded-xl font-bold hover:bg-slate-600 transition text-sm"><i class="fas fa-forward mr-2"></i> ข้าม</button>
+                                <button onclick="stopExercise()" class="flex-1 bg-rose-500 text-white py-2.5 rounded-xl font-bold hover:bg-rose-600 transition text-sm shadow-md"><i class="fas fa-stop mr-2"></i> ออก</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 6 Poses Manual Guide -->
+                    <div class="bg-white rounded-3xl border border-slate-100 shadow-sm flex-1 flex flex-col overflow-hidden">
+                        <div class="p-4 border-b border-slate-100 bg-indigo-50 shrink-0">
+                            <h3 class="font-bold text-indigo-900 text-sm leading-tight"><i class="fas fa-book-medical mr-1"></i> 6 ท่ายืด ป้องกันออฟฟิศซินโดรม</h3>
+                            <p class="text-[10px] text-indigo-600 mt-1">มหาวิทยาลัยมหิดล คณะแพทยศาสตร์โรงพยาบาลรามาธิบดี</p>
+                        </div>
+                        <div class="flex-1 overflow-y-auto p-3 space-y-2">
+                            <div id="rama-guide-0" class="rama-guide-item bg-slate-50 p-3 rounded-xl border border-slate-100 transition-colors">
+                                <div class="font-bold text-slate-700 text-sm mb-1">ท่าที่ 1</div>
+                                <p class="text-xs text-slate-600 leading-relaxed">มือประสานเหนือท้ายทอย หลังตรง ไม่เกร็ง กดศีรษะให้คอก้มลงจนตึงบริเวณหลังคอ นับ 1–10 ช้า ๆ แล้วค่อย ๆ ผ่อนมือออก</p>
+                            </div>
+                            <div id="rama-guide-1" class="rama-guide-item bg-slate-50 p-3 rounded-xl border border-slate-100 transition-colors">
+                                <div class="font-bold text-slate-700 text-sm mb-1">ท่าที่ 2</div>
+                                <p class="text-xs text-slate-600 leading-relaxed">ใช้มือข้างหนึ่งจับขอบเก้าอี้และใช้มืออีกข้างอ้อมหลังศีรษะดันกดลงมา จนรู้สึกตึงบริเวณกล้ามเนื้อคอและบ่า นับ 1–10 ช้า ๆ แล้วค่อย ๆ ผ่อนมือออก (ทำสลับซ้าย-ขวา)</p>
+                            </div>
+                            <div id="rama-guide-2" class="rama-guide-item bg-slate-50 p-3 rounded-xl border border-slate-100 transition-colors">
+                                <div class="font-bold text-slate-700 text-sm mb-1">ท่าที่ 3</div>
+                                <p class="text-xs text-slate-600 leading-relaxed">ยกแขนไปด้านตรงข้ามในท่าเหยียด ศอกตรง เอามืออีกข้างงอศอก ดันแขนบริเวณเหนือศอกเข้าหาลำตัวมากขึ้น นับ 1–10 ช้า ๆ (ทำสลับซ้าย-ขวา)</p>
+                            </div>
+                            <div id="rama-guide-3" class="rama-guide-item bg-slate-50 p-3 rounded-xl border border-slate-100 transition-colors">
+                                <div class="font-bold text-slate-700 text-sm mb-1">ท่าที่ 4</div>
+                                <p class="text-xs text-slate-600 leading-relaxed">ยกแขนขึ้นเหนือศีรษะ งอศอกจนมือแตะไหล่อีกข้าง ใช้มืออีกข้างดันศอกเข้าหาตัวค้างไว้ นับ 1–10 ช้า ๆ (ทำสลับซ้าย-ขวา)</p>
+                            </div>
+                            <div id="rama-guide-4" class="rama-guide-item bg-slate-50 p-3 rounded-xl border border-slate-100 transition-colors">
+                                <div class="font-bold text-slate-700 text-sm mb-1">ท่าที่ 5</div>
+                                <p class="text-xs text-slate-600 leading-relaxed">เหยียดแขนไปด้านหน้า กระดกข้อมือขึ้นใช้มืออีกข้างดันบริเวณนิ้ว เพื่อกระดกข้อมือขึ้นข้างหน้าจนรู้สึกตึง นับ 1–10 ช้า ๆ (ทำสลับซ้าย-ขวา)</p>
+                            </div>
+                            <div id="rama-guide-5" class="rama-guide-item bg-slate-50 p-3 rounded-xl border border-slate-100 transition-colors">
+                                <div class="font-bold text-slate-700 text-sm mb-1">ท่าที่ 6</div>
+                                <p class="text-xs text-slate-600 leading-relaxed">เหยียดแขนไปด้านหน้า กระดกข้อมือลงใช้มืออีกข้างดันบริเวณหลังมือ เพื่อกระดกข้อมือลงเข้าหาตัวจนรู้สึกตึง นับ 1–10 ช้า ๆ (ทำสลับซ้าย-ขวา)</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================= 5. LEADERBOARD ================= -->
+            <div id="page-leaderboard" class="page-section hidden max-w-4xl mx-auto">
+                <!-- ... (Leaderboard เดิม) ... -->
+                <div class="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 text-white shadow-lg mb-8 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-3xl font-black mb-2">ออฟฟิศของคุณ (โหมดทีม)</h2>
+                        <p class="text-indigo-100">แข่งขันกันเพื่อชิงตำแหน่งพนักงานผู้มีสุขภาพดีเด่นประจำเดือน</p>
+                    </div>
+                    <i class="fas fa-trophy text-6xl text-yellow-400 drop-shadow-lg hidden md:block"></i>
+                </div>
+
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                    <div class="bg-slate-50 px-6 py-4 border-b border-slate-100 flex font-bold text-slate-500 text-sm">
+                        <div class="w-16 text-center">อันดับ</div>
+                        <div class="flex-1">ชื่อพนักงาน</div>
+                        <div class="w-32 text-center">สังกัด</div>
+                        <div class="w-32 text-right">คะแนนรวม</div>
+                    </div>
+                    
+                    <div class="divide-y divide-slate-50">
+                        <div class="flex items-center px-6 py-4 bg-yellow-50/50 hover:bg-slate-50 transition">
+                            <div class="w-16 text-center text-2xl font-black text-yellow-500">1</div>
+                            <div class="flex-1 flex items-center gap-3"><img src="https://i.pravatar.cc/150?img=1" class="w-10 h-10 rounded-full"> <span class="font-bold text-slate-800">นพพล ม.</span></div>
+                            <div class="w-32 text-center text-sm text-slate-500 border border-slate-200 rounded-full py-1">Marketing</div>
+                            <div class="w-32 text-right font-black text-emerald-600 text-lg">4,520</div>
+                        </div>
+                        <div class="flex items-center px-6 py-4 hover:bg-slate-50 transition">
+                            <div class="w-16 text-center text-2xl font-black text-slate-400">2</div>
+                            <div class="flex-1 flex items-center gap-3"><img src="https://i.pravatar.cc/150?img=5" class="w-10 h-10 rounded-full"> <span class="font-bold text-slate-800">วิภาดา ส.</span></div>
+                            <div class="w-32 text-center text-sm text-slate-500 border border-slate-200 rounded-full py-1">HR</div>
+                            <div class="w-32 text-right font-black text-emerald-600 text-lg">3,890</div>
+                        </div>
+                        <div class="flex items-center px-6 py-4 border-l-4 border-emerald-500 bg-emerald-50/30">
+                            <div class="w-16 text-center text-xl font-bold text-slate-600">3</div>
+                            <div class="flex-1 flex items-center gap-3"><img src="https://ui-avatars.com/api/?name=User&background=0D8ABC&color=fff" id="lb-avatar" class="w-10 h-10 rounded-full border-2 border-emerald-500"> <span class="font-bold text-slate-800">คุณ (You)</span></div>
+                            <div class="w-32 text-center text-sm text-slate-500 border border-slate-200 rounded-full py-1">IT</div>
+                            <div class="w-32 text-right font-black text-emerald-600 text-lg" id="lb-score">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Sounds -->
+    <audio id="sound-alert" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+    <audio id="sound-success" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg"></audio>
+
+    <script type="text/javascript">
+        // ==========================================
+        // 1-5. LOGIC เดิมทั้งหมดของระบบ (SUPABASE & CHARTS)
+        // ==========================================
+        const SUPABASE_URL = 'https://vhvpdxbqhvrkppmlipuw.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZodnBkeGJxaHZya3BwbWxpcHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMjU5NTUsImV4cCI6MjA4ODgwMTk1NX0.uPiPAy71qYJpCkq_z4PRHRTFzJ5NIxrePTPv2hVf76Q'; 
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const TABLE_NAME = 'personal_info'; 
+
+        let currentUser = null;
+        let globalScore = 0; 
+        let sessionSeconds = 0; let sessionBadSeconds = 0; 
+        let isBadPosture = false; let badPostureSeconds = 0; 
+        let sessionTimerInterval = null; let midnightCheckInterval = null;
+        let weeklyChart = null; let postureChart = null;
+        let isFetching = false; let currentMode = 'dashboard'; 
+
+        async function refreshData() {
+            if (!currentUser || isMonitorActive || isFetching) return;
+            isFetching = true;
+            try {
+                await loadUserData(); handleDailyReset(); updateScoreUI(); updateTimerUI(); updateChartsData();
+            } catch (err) { console.error(err); } finally { isFetching = false; }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (!session) { window.location.href = 'login.html'; return; }
+            currentUser = session.user;
+            let displayName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+            if(displayName.length > 15) displayName = displayName.substring(0, 12) + '...';
+            
+            document.getElementById('user-email-display').innerText = displayName; document.getElementById('welcome-name').innerText = displayName;
+            const avatarUrl = `https://ui-avatars.com/api/?name=${displayName}&background=10b981&color=fff&bold=true`;
+            document.getElementById('user-avatar-img').src = avatarUrl; document.getElementById('lb-avatar').src = avatarUrl;
+            
+            initCharts(); await refreshData(); startMidnightChecker(); 
+        });
+
+        window.addEventListener('focus', refreshData);
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshData(); });
+        window.addEventListener('pageshow', (event) => { if (event.persisted) refreshData(); });
+
+        async function logout() { stopMonitor(); stopExercise(); await syncToSupabase(); await supabaseClient.auth.signOut(); window.location.href = 'login.html'; }
+
+        function parseHHMMSSToSeconds(timeStr) { if (!timeStr) return 0; const parts = timeStr.split(':'); return (parseInt(parts[0]) * 3600) + (parseInt(parts[1]) * 60) + parseInt(parts[2]); }
+        function formatTimeToHHMMSS(totalSec) { const h = Math.floor(totalSec / 3600).toString().padStart(2, '0'); const m = Math.floor((totalSec % 3600) / 60).toString().padStart(2, '0'); const s = (totalSec % 60).toString().padStart(2, '0'); return `${h}:${m}:${s}`; }
+
+        async function loadUserData() {
+            if(!currentUser) return;
+            try {
+                const { data, error } = await supabaseClient.from(TABLE_NAME).select('*').eq('user_id', currentUser.id).maybeSingle(); 
+                if (error) console.error("Supabase Load Error:", error.message);
+                if (data) {
+                    globalScore = parseInt(data.score || 0); sessionSeconds = parseHHMMSSToSeconds(data.time);
+                    const todayDate = new Date().toLocaleDateString();
+                    if (localStorage.getItem('lastActiveDate') === todayDate) sessionBadSeconds = parseInt(localStorage.getItem('sessionBadSeconds') || '0');
+                    else sessionBadSeconds = 0;
+                    localStorage.setItem('sessionSeconds', sessionSeconds.toString()); localStorage.setItem('sessionBadSeconds', sessionBadSeconds.toString());
+                } else { globalScore = 0; sessionSeconds = 0; }
+            } catch (err) { console.error("❌ Exception:", err); }
+        }
+
+        async function syncToSupabase() {
+            if(!currentUser) return;
+            const timeString = formatTimeToHHMMSS(sessionSeconds);
+            try {
+                const { data: existingData, error: selectError } = await supabaseClient.from(TABLE_NAME).select('id').eq('user_id', currentUser.id).maybeSingle();
+                if (selectError) console.error("❌ เช็คข้อมูลล้มเหลว:", selectError.message);
+                if (existingData) { const { error } = await supabaseClient.from(TABLE_NAME).update({ score: globalScore, time: timeString }).eq('user_id', currentUser.id); if (error) console.error("Update Error:", error.message); } 
+                else { const { error } = await supabaseClient.from(TABLE_NAME).insert([{ user_id: currentUser.id, score: globalScore, time: timeString }]); if (error) console.error("Insert Error:", error.message); }
+            } catch (err) { console.error("❌ Sync Exception:", err); }
+        }
+
+        function handleDailyReset() {
+            const todayDate = new Date().toLocaleDateString(); const lastSavedDate = localStorage.getItem('lastActiveDate');
+            if (lastSavedDate !== todayDate) {
+                sessionSeconds = 0; sessionBadSeconds = 0;
+                localStorage.setItem('sessionSeconds', '0'); localStorage.setItem('sessionBadSeconds', '0'); localStorage.setItem('lastActiveDate', todayDate);
+                syncToSupabase(); 
+            }
+        }
+
+        function startMidnightChecker() {
+            if(midnightCheckInterval) clearInterval(midnightCheckInterval);
+            midnightCheckInterval = setInterval(() => {
+                const now = new Date();
+                if (now.getHours() === 0 && now.getMinutes() === 0 && now.getSeconds() === 0) {
+                    syncToSupabase(); sessionSeconds = 0; sessionBadSeconds = 0;
+                    localStorage.setItem('sessionSeconds', '0'); localStorage.setItem('sessionBadSeconds', '0'); localStorage.setItem('lastActiveDate', now.toLocaleDateString());
+                    updateTimerUI(); updateChartsData(); syncToSupabase(); 
+                }
+            }, 1000);
+        }
+
+        function updateTimerUI() {
+            const timeStr = formatTimeToHHMMSS(sessionSeconds);
+            const monitorTimer = document.getElementById('session-timer'); const dashTimer = document.getElementById('dash-timer');
+            if(monitorTimer) monitorTimer.innerText = timeStr; if(dashTimer) dashTimer.innerText = timeStr;
+        }
+
+        function addScore(points) {
+            globalScore += points; if(globalScore < 0) globalScore = 0;
+            updateScoreUI(); syncToSupabase(); updateChartsData(); 
+            if(currentMode === 'monitor') {
+                const liveEl = document.getElementById('live-score');
+                if(liveEl) liveEl.innerText = parseInt(liveEl.innerText || 0) + points;
+                const ind = document.getElementById('score-indicator');
+                if(ind) {
+                    ind.innerText = points > 0 ? `+${points}` : points;
+                    ind.className = `absolute top-2 right-4 font-bold text-sm transition-opacity duration-300 opacity-100 ${points > 0 ? 'text-emerald-500' : 'text-rose-500'}`;
+                    setTimeout(() => ind.classList.remove('opacity-100'), 1000);
+                }
+            }
+        }
+
+        function updateScoreUI() {
+            const globalScoreEl = document.getElementById('global-score'); const lbScoreEl = document.getElementById('lb-score');
+            if(globalScoreEl) globalScoreEl.innerHTML = `${globalScore} <span class="text-sm font-normal">pts</span>`;
+            if(lbScoreEl) lbScoreEl.innerText = globalScore.toLocaleString();
+        }
+
+        function initCharts() {
+            weeklyChart = new Chart(document.getElementById('chart-weekly').getContext('2d'), { type: 'bar', data: { labels:[], datasets:[{ label: 'คะแนนสุขภาพ', data:[], backgroundColor: '#10b981', borderRadius: 8 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } } } } });
+            postureChart = new Chart(document.getElementById('chart-posture').getContext('2d'), { type: 'doughnut', data: { labels:['Good Posture', 'Bad Posture'], datasets:[{ data:[1, 0], backgroundColor:['#10b981', '#f43f5e'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false } } } });
+        }
+
+        async function updateChartsData() {
+            if(!weeklyChart || !postureChart || !currentUser) return;
+            weeklyChart.data.labels = ['วันนี้']; weeklyChart.data.datasets[0].data = [globalScore]; weeklyChart.update();
+            let good = sessionSeconds; let bad = sessionBadSeconds; if(good === 0 && bad === 0) { good = 1; bad = 0; } 
+            postureChart.data.datasets[0].data = [good, bad]; postureChart.update();
+        }
+
+        function switchPage(page) {
+            document.querySelectorAll('.page-section').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`page-${page}`).classList.remove('hidden');
+            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+            document.getElementById(`nav-${page}`).classList.add('active');
+            if(page === 'dashboard') updateChartsData();
+            currentMode = page;
+        }
+
+        // ==========================================
+        // 6. AI CORE & 6 ท่ารามาธิบดี (11 ขั้นตอน แบ่งซ้าย-ขวา)
+        // ==========================================
+        const MONITOR_MODEL_URL = "https://teachablemachine.withgoogle.com/models/hHOMJjO-x/"; 
+        const EXERCISE_MODEL_URL = "https://teachablemachine.withgoogle.com/models/AKUqhTn0k/"; 
+        
+        // กำหนดข้อมูลท่ายืด (แบ่งขั้นตอนย่อยเป็น ซ้าย-ขวา ทั้งหมด 11 ขั้นตอน)
+        const RAMA_EXERCISES =[
+            { name: "ท่าที่ 1", targetClass: "pose 1", guideIndex: 0, desc: "มือประสานเหนือท้ายทอย หลังตรง ไม่เกร็ง กดศีรษะให้คอก้มลงจนตึงบริเวณหลังคอ นับ 1–10 ช้า ๆ แล้วค่อย ๆ ผ่อนมือออก" },
+            { name: "ท่าที่ 2 (ข้างซ้าย)", targetClass: "pose 2 (left)", guideIndex: 1, desc: "ใช้มือข้างซ้ายจับขอบเก้าอี้และใช้มือขวาอ้อมหลังศีรษะดันศีรษะไปทางขวา จนรู้สึกตึงบริเวณกล้ามเนื้อคอและบ่าซ้าย นับ 1–10 ช้า ๆ แล้วค่อย ๆ ผ่อนมือออก" },
+            { name: "ท่าที่ 2 (ข้างขวา)", targetClass: "pose 2 (right)", guideIndex: 1, desc: "ใช้มือข้างขวาจับขอบเก้าอี้และใช้มือซ้ายอ้อมหลังศีรษะดันศีรษะไปทางซ้าย จนรู้สึกตึงบริเวณกล้ามเนื้อคอและบ่าขวา นับ 1–10 ช้า ๆ แล้วค่อย ๆ ผ่อนมือออก" },
+            { name: "ท่าที่ 3 (ข้างซ้าย)", targetClass: "pose 3 (left)", guideIndex: 2, desc: "ยกแขนซ้ายไปด้านขวาในท่าเหยียด ศอกตรง เอามือขวางอศอก ดันแขนซ้าย บริเวณเหนือศอกเข้าหาลำตัวมากขึ้น นับ 1–10 ช้า ๆ ค่อย ๆ ผ่อนมือออก" },
+            { name: "ท่าที่ 3 (ข้างขวา)", targetClass: "pose 3 (right)", guideIndex: 2, desc: "ยกแขนขวาไปด้านซ้ายในท่าเหยียด ศอกตรง เอามือซ้ายงอศอก ดันแขนขวา บริเวณเหนือศอกเข้าหาลำตัวมากขึ้น นับ 1–10 ช้า ๆ ค่อย ๆ ผ่อนมือออก" },
+            { name: "ท่าที่ 4 (ข้างซ้าย)", targetClass: "pose 4 (left)", guideIndex: 3, desc: "ยกแขนซ้ายขึ้นเหนือศีรษะ งอศอกซ้ายจนมือซ้ายแตะไหล่ขวา ใช้มือขวาดันศอกซ้ายเข้าหาตัวค้างไว้ นับ 1–10 ช้า ๆ" },
+            { name: "ท่าที่ 4 (ข้างขวา)", targetClass: "pose 4 (right)", guideIndex: 3, desc: "ยกแขนขวาขึ้นเหนือศีรษะ งอศอกขวาจนมือขวาแตะไหล่ซ้าย ใช้มือซ้ายดันศอกขวาเข้าหาตัวค้างไว้ นับ 1–10 ช้า ๆ" },
+            { name: "ท่าที่ 5 (ข้างซ้าย)", targetClass: "pose 5 (left)", guideIndex: 4, desc: "เหยียดแขนซ้ายไปด้านหน้า กระดกข้อมือขึ้นใช้มือขวาดันบริเวณนิ้ว เพื่อกระดกข้อมือขึ้นข้างหน้าจนรู้สึกตึง นับ 1–10 ช้า ๆ" },
+            { name: "ท่าที่ 5 (ข้างขวา)", targetClass: "pose 5 (right)", guideIndex: 4, desc: "เหยียดแขนขวาไปด้านหน้า กระดกข้อมือขึ้นใช้มือซ้ายดันบริเวณนิ้ว เพื่อกระดกข้อมือขึ้นข้างหน้าจนรู้สึกตึง นับ 1–10 ช้า ๆ" },
+            { name: "ท่าที่ 6 (ข้างซ้าย)", targetClass: "pose 6 (left)", guideIndex: 5, desc: "เหยียดแขนซ้ายไปด้านหน้า กระดกข้อมือลงใช้มือขวาดันบริเวณหลังมือ เพื่อกระดกข้อมือลงเข้าหาตัวจนรู้สึกตึง นับ 1–10 ช้า ๆ" },
+            { name: "ท่าที่ 6 (ข้างขวา)", targetClass: "pose 6 (right)", guideIndex: 5, desc: "เหยียดแขนขวาไปด้านหน้า กระดกข้อมือลงใช้มือซ้ายดันบริเวณหลังมือ เพื่อกระดกข้อมือลงเข้าหาตัวจนรู้สึกตึง นับ 1–10 ช้า ๆ" }
+        ];
+
+        let webcam = null; let isLooping = false; let isMonitorActive = false; let isExerciseActive = false;
+        let modelMonitor = null; let maxPredMonitor = 0; let monitorCtx;
+        let modelExercise = null; let maxPredExercise = 0; let exerciseList =[]; 
+        let exerciseCtx; let curExIdx = 0; let holdCounter = 0;
+
+        async function setupWebcamAndCanvas(canvasId) {
+            if(!webcam) {
+                webcam = new tmPose.Webcam(640, 480, true);
+                await webcam.setup(); await webcam.play();
+            }
+            const canvas = document.getElementById(canvasId); canvas.width = 640; canvas.height = 480;
+            canvas.classList.remove('hidden');
+            if(!isLooping) { isLooping = true; loop(); }
+            return canvas.getContext('2d');
+        }
+
+        async function loop() {
+            if(isLooping) {
+                if(webcam) webcam.update();
+                if(isMonitorActive && modelMonitor) await predictMonitor();
+                else if(isExerciseActive && modelExercise) await predictExercise();
+                setTimeout(loop, 150); 
+            }
+        }
+
+        // --- โหมด Monitor ---
+        async function initMonitor() {
+            document.getElementById('btnStartMonitor').classList.add('hidden'); document.getElementById('loading-monitor').classList.remove('hidden');
+            try {
+                if(!modelMonitor) { modelMonitor = await tmPose.load(MONITOR_MODEL_URL + "model.json", MONITOR_MODEL_URL + "metadata.json"); maxPredMonitor = modelMonitor.getTotalClasses(); }
+                monitorCtx = await setupWebcamAndCanvas('monitor-canvas'); isMonitorActive = true; 
+                document.getElementById('loading-monitor').classList.add('hidden'); document.getElementById('monitor-placeholder').classList.add('hidden');
+                document.getElementById('btnStopMonitor').classList.remove('hidden'); 
+                
+                isBadPosture = false; badPostureSeconds = 0; handleDailyReset();
+                if(sessionTimerInterval) clearInterval(sessionTimerInterval);
+                sessionTimerInterval = setInterval(() => {
+                    if (!isBadPosture) {
+                        sessionSeconds++; updateTimerUI(); localStorage.setItem('sessionSeconds', sessionSeconds.toString()); 
+                        if(sessionSeconds > 0 && sessionSeconds % 10 === 0) addScore(1);
+                        badPostureSeconds = 0; document.getElementById('alertBox').classList.add('hidden');
+                    } else {
+                        badPostureSeconds++; sessionBadSeconds++; localStorage.setItem('sessionBadSeconds', sessionBadSeconds.toString());
+                        if (badPostureSeconds === 15) { document.getElementById('alertBox').classList.remove('hidden'); document.getElementById('sound-alert').play().catch(()=>{}); addScore(-3); }
+                        else if (badPostureSeconds > 15 && badPostureSeconds % 5 === 0) document.getElementById('sound-alert').play().catch(()=>{});
+                    }
+                    if (sessionSeconds > 0 && sessionSeconds % 60 === 0 && !isBadPosture) syncToSupabase();
+                }, 1000);
+            } catch(e) { console.error(e); document.getElementById('btnStartMonitor').classList.remove('hidden'); document.getElementById('loading-monitor').classList.add('hidden'); }
+        }
+
+        function stopMonitor() {
+            isMonitorActive = false; if(webcam) { webcam.stop(); webcam = null; isLooping = false; }
+            if(sessionTimerInterval) clearInterval(sessionTimerInterval); 
+            syncToSupabase(); updateChartsData();
+            document.getElementById('btnStartMonitor').classList.remove('hidden'); document.getElementById('btnStopMonitor').classList.add('hidden');
+            document.getElementById('monitor-placeholder').classList.remove('hidden'); document.getElementById('monitor-canvas').classList.add('hidden');
+            document.getElementById('alertBox').classList.add('hidden');
+            document.getElementById('monitor-frame').className = "flex-1 relative bg-slate-900 rounded-3xl overflow-hidden shadow-xl flex items-center justify-center border-4 border-slate-800 transition-colors duration-500";
+            badPostureSeconds = 0; isBadPosture = false;
+        }
+
+        async function predictMonitor() {
+            if(!modelMonitor || !webcam) return;
+            const { pose, posenetOutput } = await modelMonitor.estimatePose(webcam.canvas); const prediction = await modelMonitor.predict(posenetOutput);
+            if (currentMode === 'monitor') { monitorCtx.drawImage(webcam.canvas, 0, 0); if(pose) { tmPose.drawKeypoints(pose.keypoints, 0.5, monitorCtx); tmPose.drawSkeleton(pose.keypoints, 0.5, monitorCtx); } }
+
+            let highestProb = 0; let highestClass = ""; let html = '';
+            for (let i = 0; i < maxPredMonitor; i++) {
+                const prob = prediction[i].probability; const name = prediction[i].className;
+                const percent = Math.round(prob * 100); const isBad = name.toLowerCase().includes('bad') || name.includes('ผิด');
+                if(currentMode === 'monitor') { html += `<div class="mb-2"><div class="flex justify-between text-xs mb-1 font-bold text-slate-600"><span>${name}</span><span>${percent}%</span></div><div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full ${isBad ? 'bg-rose-500' : 'bg-emerald-500'} transition-all" style="width: ${percent}%"></div></div></div>`; }
+                if(prob > highestProb) { highestProb = prob; highestClass = name; }
+            }
+            if(currentMode === 'monitor') document.getElementById('label-container-monitor').innerHTML = html;
+            const highestIsBad = highestClass.toLowerCase().includes('bad') || highestClass.includes('ผิด');
+            const frame = document.getElementById('monitor-frame');
+            if(highestProb > 0.8 && highestIsBad) { isBadPosture = true; if(currentMode === 'monitor') { frame.classList.add('status-bad'); frame.classList.remove('status-good', 'border-slate-800'); } } 
+            else { isBadPosture = false; if(currentMode === 'monitor') { frame.classList.add('status-good'); frame.classList.remove('status-bad', 'border-slate-800'); } }
+        }
+
+        // --- โหมด Exercise ---
+        async function initExercise() {
+            try {
+                if(!modelExercise) {
+                    modelExercise = await tmPose.load(EXERCISE_MODEL_URL + "model.json", EXERCISE_MODEL_URL + "metadata.json");
+                    maxPredExercise = modelExercise.getTotalClasses();
+                    
+                    // กำหนด List เป็น 11 ขั้นตอนตามที่จัดเตรียมไว้
+                    exerciseList = RAMA_EXERCISES;
+                }
+                exerciseCtx = await setupWebcamAndCanvas('exercise-canvas');
+                isExerciseActive = true;
+                document.getElementById('exercise-placeholder').classList.add('hidden');
+                loadExStep(0);
+            } catch(e) { alert("เกิดข้อผิดพลาดในการโหลด AI โหมดออกกำลังกาย"); }
+        }
+
+        function stopExercise() {
+            isExerciseActive = false;
+            if(!isMonitorActive && webcam) { webcam.stop(); webcam = null; isLooping = false; }
+            document.getElementById('exercise-placeholder').classList.remove('hidden');
+            document.getElementById('exercise-canvas').classList.add('hidden');
+            
+            // เคลียร์ Highlight
+            document.querySelectorAll('.rama-guide-item').forEach(el => {
+                el.classList.remove('bg-indigo-100', 'border-indigo-300');
+                el.classList.add('bg-slate-50', 'border-slate-100');
+            });
+            document.getElementById('pose-name').innerText = "รอคำสั่ง...";
+            document.getElementById('pose-desc').innerText = "กดปุ่มเริ่มทำกายภาพเพื่อเปิดกล้อง";
+            document.getElementById('step-counter').innerText = `0 / 11 ขั้นตอน`;
+            document.getElementById('pose-icon-img').src = "https://cdn-icons-png.flaticon.com/512/3048/3048398.png";
+        }
+
+        function loadExStep(idx) {
+            if(idx >= exerciseList.length) {
+                document.getElementById('pose-name').innerText = "เสร็จสิ้นภารกิจ!";
+                document.getElementById('pose-desc').innerText = "ได้รับคะแนนโบนัส +50 pts";
+                document.getElementById('pose-icon-img').src = "https://cdn-icons-png.flaticon.com/512/3112/3112946.png";
+                
+                document.querySelectorAll('.rama-guide-item').forEach(el => {
+                    el.classList.remove('bg-indigo-100', 'border-indigo-300');
+                    el.classList.add('bg-slate-50', 'border-slate-100');
+                });
+
+                addScore(50); stopExercise(); return;
+            }
+            curExIdx = idx; holdCounter = 0;
+            document.getElementById('step-counter').innerText = `${idx + 1} / ${exerciseList.length} ขั้นตอน`;
+            
+            // แสดงข้อความอธิบายของท่านั้นๆ ขึ้นบน HUD AI 
+            document.getElementById('pose-name').innerText = exerciseList[idx].name;
+            document.getElementById('pose-desc').innerText = exerciseList[idx].desc;
+            document.getElementById('pose-icon-img').src = "https://cdn-icons-png.flaticon.com/512/3048/3048398.png";
+            document.getElementById('hold-bar').style.width = '0%'; document.getElementById('hold-percent').innerText = '0%';
+
+            // ไฮไลท์ท่าปัจจุบันในคู่มือ Manual Guide ทางขวามือ (อิงตาม guideIndex ไม่ใช่อิงตาม index ขั้นตอนย่อย)
+            document.querySelectorAll('.rama-guide-item').forEach((el, i) => {
+                if(i === exerciseList[idx].guideIndex) {
+                    el.classList.add('bg-indigo-100', 'border-indigo-300');
+                    el.classList.remove('bg-slate-50', 'border-slate-100');
+                    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else {
+                    el.classList.remove('bg-indigo-100', 'border-indigo-300');
+                    el.classList.add('bg-slate-50', 'border-slate-100');
+                }
+            });
+        }
+        function skipExercise() { loadExStep(curExIdx + 1); }
+
+        async function predictExercise() {
+            if(curExIdx >= exerciseList.length || !modelExercise || !webcam) return;
+            const { pose, posenetOutput } = await modelExercise.estimatePose(webcam.canvas); const prediction = await modelExercise.predict(posenetOutput);
+
+            if(currentMode === 'exercise') { exerciseCtx.drawImage(webcam.canvas, 0, 0); if(pose) { tmPose.drawKeypoints(pose.keypoints, 0.5, exerciseCtx); tmPose.drawSkeleton(pose.keypoints, 0.5, exerciseCtx); } }
+            
+            let targetProb = 0;
+            for(let i=0; i<maxPredExercise; i++) { 
+                // ค้นหาแบบเทียบตัวอักษรพิมพ์เล็ก และพยายามลบช่องว่างเพื่อความยืดหยุ่น (ในกรณีที่ Teachable Machine ส่งมาไม่เว้นวรรค)
+                const predClass = prediction[i].className.toLowerCase().trim();
+                const target = exerciseList[curExIdx].targetClass.toLowerCase().trim();
+                if(predClass === target || predClass.replace(/\s+/g, '') === target.replace(/\s+/g, '')) {
+                    targetProb = prediction[i].probability; 
+                }
+            }
+
+            if(targetProb > 0.8) holdCounter++; else holdCounter -= 2;
+            if(holdCounter < 0) holdCounter = 0;
+            
+            let pct = Math.min((holdCounter / 60) * 100, 100); 
+            if(currentMode === 'exercise') { document.getElementById('hold-bar').style.width = pct + '%'; document.getElementById('hold-percent').innerText = pct.toFixed(0) + '%'; }
+
+            if(pct >= 100) {
+                if(currentMode === 'exercise') document.getElementById('exercise-feedback').classList.remove('hidden');
+                document.getElementById('sound-success').play().catch(()=>{});
+                addScore(20); holdCounter = 0;
+                setTimeout(() => { if(currentMode === 'exercise') document.getElementById('exercise-feedback').classList.add('hidden'); loadExStep(curExIdx + 1); }, 2000);
+            }
+        }
+    </script>
+
+</body>
+</html>
