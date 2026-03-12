@@ -40,6 +40,13 @@
         .body-part { cursor: pointer; transition: all 0.3s; fill: #cbd5e1; }
         .body-part:hover { fill: #f43f5e; filter: drop-shadow(0 0 8px rgba(244,63,94,0.6)); }
         .body-part.active { fill: #f43f5e; }
+
+        /* Animation สำหรับตอนแสดงผลวินิจฉัย */
+        @keyframes fadeIn { 
+            from { opacity: 0; transform: translateY(10px); } 
+            to { opacity: 1; transform: translateY(0); } 
+        }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
     </style>
 </head>
 <body class="h-screen flex overflow-hidden text-slate-700">
@@ -109,7 +116,6 @@
             
             <!-- ================= 1. DASHBOARD ================= -->
             <div id="page-dashboard" class="page-section max-w-6xl mx-auto space-y-6">
-                <!-- ... (Dashboard เดิม) ... -->
                 <h2 class="text-2xl font-bold text-slate-800">ยินดีต้อนรับกลับมา, <span class="text-emerald-600" id="welcome-name">ผู้ใช้งาน</span> 👋</h2>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4 relative overflow-hidden">
@@ -207,7 +213,6 @@
 
             <!-- ================= 3. CLINIC ================= -->
             <div id="page-clinic" class="page-section hidden max-w-5xl mx-auto">
-                <!-- ... (Clinic เดิม) ... -->
                 <div class="text-center mb-8">
                     <h2 class="text-3xl font-bold text-slate-800">ระบบ Heatmap จุดปวด</h2>
                     <p class="text-slate-500 mt-2">คลิกเลือกบริเวณที่คุณรู้สึกปวดหรือตึง เพื่อรับแผนการรักษาส่วนตัวจาก AI</p>
@@ -321,7 +326,6 @@
                 </div>
             </div>
 
-            <!-- ================= 5. LEADERBOARD ================= -->
             <!-- ================= 5. LEADERBOARD ================= -->
             <div id="page-leaderboard" class="page-section hidden max-w-4xl mx-auto">
                 <div class="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 text-white shadow-lg mb-8 flex items-center justify-between">
@@ -706,6 +710,86 @@
                 addScore(20); holdCounter = 0;
                 setTimeout(() => { if(currentMode === 'exercise') document.getElementById('exercise-feedback').classList.add('hidden'); loadExStep(curExIdx + 1); }, 2000);
             }
+        }
+
+        // ==========================================
+        // 7. ระบบ AI CLINIC วิเคราะห์จุดปวด (Heatmap)
+        // ==========================================
+        const painData = {
+            neck: {
+                title: "ออฟฟิศซินโดรมบริเวณคอ",
+                desc: "มักเกิดจากภาวะ 'คอยื่น' (Forward Head Posture) จากการจ้องจอคอมพิวเตอร์หรือโทรศัพท์นานเกินไป ทำให้กล้ามเนื้อคอต้องรับน้ำหนักศีรษะที่เพิ่มขึ้นหลายเท่า นำไปสู่อาการปวดตึงร้าวลงไปถึงบ่า",
+                advice: "ปรับระดับหน้าจอให้อยู่ในระดับสายตา และควรทำกายภาพบำบัด 'ท่าที่ 1 และ 2' เพื่อยืดกล้ามเนื้อคอด้านหลังและด้านข้างเป็นประจำ",
+                actionText: "เริ่มทำกายภาพยืดคอ",
+                actionLink: "switchPage('exercise')",
+                actionIcon: "fas fa-running"
+            },
+            shoulder: {
+                title: "กล้ามเนื้อบ่าและไหล่อักเสบ",
+                desc: "เกิดจากการเกร็งยกไหล่ขณะพิมพ์งาน หรือใช้เมาส์ในระดับที่ไม่พอดี ทำให้กล้ามเนื้อบ่า (Trapezius) หดเกร็งต่อเนื่องจนจับตัวเป็นก้อน (Trigger Point) ส่งผลให้ปวดร้าวขึ้นศีรษะได้",
+                advice: "ปรับความสูงของโต๊ะ/เก้าอี้ให้ข้อศอกวางทำมุม 90 องศาพอดี แนะนำให้ทำ 'ท่าที่ 3 และ 4' เพื่อยืดคลายความตึงบริเวณหัวไหล่และสะบัก",
+                actionText: "เริ่มทำกายภาพยืดไหล่",
+                actionLink: "switchPage('exercise')",
+                actionIcon: "fas fa-running"
+            },
+            back: {
+                title: "ปวดหลังส่วนล่าง (Lower Back Pain)",
+                desc: "เกิดจากการนั่งหลังค่อม ทิ้งน้ำหนักไปที่กระดูกสันหลัง หรือเก้าอี้ไม่มีตัวรองรับความโค้งของหลัง (Lumbar Support) หากปล่อยทิ้งไว้อาจเสี่ยงต่อภาวะหมอนรองกระดูกทับเส้นประสาท",
+                advice: "ควรลุกเดินเปลี่ยนอิริยาบถทุกๆ 45 นาที แนะนำให้เปิด 'โหมด AI ตรวจจับท่านั่ง' เพื่อให้ระบบคอยเตือนทันทีเมื่อคุณเริ่มนั่งหลังค่อม",
+                actionText: "เปิด AI ตรวจจับท่านั่ง",
+                actionLink: "switchPage('monitor')",
+                actionIcon: "fas fa-video"
+            },
+            wrist: {
+                title: "พังผืดทับเส้นประสาทข้อมือ",
+                desc: "เกิดจากการงอพับข้อมือพิมพ์งานเป็นเวลานาน ทำให้เกิดการเสียดสีจนพังผืดอักเสบและไปกดทับเส้นประสาท (Carpal Tunnel Syndrome) บางรายอาจมีอาการชาที่ปลายนิ้วร่วมด้วย",
+                advice: "ควรหาแผ่นรองข้อมือแบบเจลมาช่วยซัพพอร์ต และพักทำ 'ท่าที่ 5 และ 6' เพื่อยืดเส้นเอ็นบริเวณข้อมือและแขนท่อนล่าง",
+                actionText: "เริ่มทำกายภาพยืดข้อมือ",
+                actionLink: "switchPage('exercise')",
+                actionIcon: "fas fa-running"
+            }
+        };
+
+        function selectPain(part) {
+            // 1. ล้างไฮไลต์จากอวัยวะที่เคยเลือกไว้ทั้งหมด
+            document.querySelectorAll('.body-part').forEach(el => el.classList.remove('active'));
+            
+            // 2. ไฮไลต์อวัยวะใหม่ที่ถูกคลิก (เปลี่ยนเป็นสีแดง)
+            document.querySelectorAll(`.body-part[onclick="selectPain('${part}')"]`).forEach(el => el.classList.add('active'));
+
+            // 3. ดึงข้อมูลที่ตรงกับจุดที่คลิก
+            const data = painData[part];
+            const box = document.getElementById('prescription-box');
+            
+            // 4. แสดงผลลงในกล่องวิเคราะห์ (Prescription Box)
+            box.innerHTML = `
+                <div class="animate-fade-in w-full">
+                    <div class="flex items-center gap-4 mb-5">
+                        <div class="w-14 h-14 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center text-2xl shadow-sm shrink-0">
+                            <i class="fas fa-notes-medical"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs font-bold text-rose-500 uppercase tracking-wider mb-1">AI Diagnosis Report</div>
+                            <h3 class="text-xl font-bold text-slate-800 leading-tight">${data.title}</h3>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-4">
+                        <h4 class="text-sm font-bold text-slate-700 mb-2 flex items-center"><i class="fas fa-search text-slate-400 mr-2"></i> สาเหตุและอาการ</h4>
+                        <p class="text-slate-600 text-sm leading-relaxed">${data.desc}</p>
+                    </div>
+
+                    <div class="bg-emerald-50 border border-emerald-100 p-5 rounded-2xl mb-6 relative overflow-hidden">
+                        <i class="fas fa-robot absolute -right-2 -bottom-2 text-5xl text-emerald-500/10"></i>
+                        <h4 class="text-sm font-bold text-emerald-800 mb-2 flex items-center"><i class="fas fa-comment-medical mr-2"></i> คำแนะนำจาก AI Clinic</h4>
+                        <p class="text-emerald-700 text-sm leading-relaxed relative z-10">${data.advice}</p>
+                    </div>
+
+                    <button onclick="${data.actionLink}" class="w-full bg-slate-800 text-white py-3.5 rounded-xl font-bold hover:bg-slate-700 hover:shadow-lg transition flex justify-center items-center gap-2">
+                        <i class="${data.actionIcon}"></i> ${data.actionText}
+                    </button>
+                </div>
+            `;
         }
     </script>
 
